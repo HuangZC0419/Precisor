@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 840">
+<style>text{font-family:"PingFang SC","Microsoft YaHei","SimHei","Noto Sans SC",sans-serif}
+.t18{font-size:18px;font-weight:700;fill:#1e293b}.t12{font-size:12px;font-weight:600;fill:#1e293b}
+.t11{font-size:11px;font-weight:600;fill:#334155}.t10{font-size:10px;font-weight:400;fill:#64748b}
+.t9{font-size:9px;font-weight:400;fill:#94a3b8}.t8{font-size:8px;font-weight:400;fill:#64748b}
+.t8p{font-size:8px;font-weight:600;fill:#7c3aed}.t7{font-size:7px;font-weight:400;fill:#64748b}
+.ct{font-size:10.5px;font-weight:700;fill:#475569;letter-spacing:.06em}
+.cs{font-size:9px;font-weight:400;fill:#94a3b8}</style>
+<defs>
+<marker id="mB" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#2563eb"/></marker>
+<marker id="mP" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#7c3aed"/></marker>
+<marker id="mG" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#059669"/></marker>
+<marker id="mX" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#94a3b8"/></marker>
+<filter id="sd" x="-2%" y="-2%" width="104%" height="108%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity=".05"/></filter>
+<linearGradient id="gr" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#2563eb" stop-opacity="0"/><stop offset="50%" stop-color="#2563eb" stop-opacity=".5"/><stop offset="100%" stop-color="#2563eb" stop-opacity="0"/></linearGradient>
+</defs>
+<rect width="1200" height="840" fill="#fff"/>
+<text x="600" y="32" text-anchor="middle" class="t18">MinerU 系统架构与 NER 模型结构</text>
+<line x1="400" y1="42" x2="800" y2="42" stroke="url(#gr)" stroke-width="1.5"/>
+<rect x="30" y="55" width="1140" height="145" rx="8" fill="#eff6ff" fill-opacity=".35" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="6,3" filter="url(#sd)"/>
+<rect x="30" y="55" width="1140" height="22" rx="8" fill="#eff6ff" stroke="none"/>
+<rect x="30" y="69" width="1140" height="8" fill="#eff6ff" stroke="none"/>
+<text x="46" y="70" class="ct">文档解析管道</text>
+<text x="82" y="70" class="cs">  Document Parsing Pipeline</text>
+<rect x="52" y="104" width="148" height="42" rx="6" fill="#fff" stroke="#93c5fd" stroke-width="1.2"/>
+<text x="126" y="122" text-anchor="middle" class="t12">PDF 文档</text>
+<text x="126" y="137" text-anchor="middle" class="t10">用户上传</text>
+<line x1="200" y1="125" x2="240" y2="125" stroke="#2563eb" stroke-width="1.6" marker-end="url(#mB)"/>
+<rect x="246" y="104" width="148" height="42" rx="6" fill="#fff" stroke="#93c5fd" stroke-width="1.2"/>
+<text x="320" y="122" text-anchor="middle" class="t12">FastAPI</text>
+<text x="320" y="137" text-anchor="middle" class="t10">POST /upload</text>
+<line x1="394" y1="125" x2="422" y2="125" stroke="#2563eb" stroke-width="1.6" marker-end="url(#mB)"/>
+<rect x="428" y="104" width="184" height="42" rx="6" fill="#fff" stroke="#93c5fd" stroke-width="1.2"/>
+<text x="520" y="122" text-anchor="middle" class="t12">mineru_runner</text>
+<text x="520" y="137" text-anchor="middle" class="t10">质量增强 · DPI=560 · OCR优化</text>
+<line x1="612" y1="125" x2="640" y2="125" stroke="#2563eb" stroke-width="1.6" marker-end="url(#mB)"/>
+<rect x="646" y="104" width="148" height="42" rx="6" fill="#fff" stroke="#93c5fd" stroke-width="1.2"/>
+<text x="720" y="122" text-anchor="middle" class="t12">MinerU</text>
+<text x="720" y="137" text-anchor="middle" class="t10">do_parse()</text>
+<line x1="794" y1="125" x2="840" y2="125" stroke="#2563eb" stroke-width="1.6" marker-end="url(#mB)"/>
+<rect x="846" y="104" width="148" height="42" rx="6" fill="#fff" stroke="#93c5fd" stroke-width="1.2"/>
+<text x="920" y="122" text-anchor="middle" class="t12">Markdown 输出</text>
+<text x="920" y="137" text-anchor="middle" class="t10">+ Layout PDF + 图片</text>
+<rect x="30" y="220" width="530" height="270" rx="8" fill="#f0fdf4" fill-opacity=".35" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="6,3" filter="url(#sd)"/>
+<rect x="30" y="220" width="530" height="22" rx="8" fill="#f0fdf4" stroke="none"/>
+<rect x="30" y="234" width="530" height="8" fill="#f0fdf4" stroke="none"/>
+<text x="46" y="235" class="ct">规则标注引擎</text>
+<text x="82" y="235" class="cs">  Rule-Based Annotation</text>
+<rect x="205" y="241" width="180" height="42" rx="6" fill="#fff" stroke="#86efac" stroke-width="1.2"/>
+<text x="295" y="266" text-anchor="middle" class="t12">Markdown 文本输入</text>
+<line x1="295" y1="283" x2="295" y2="301" stroke="#2563eb" stroke-width="1.5" marker-end="url(#mB)"/>
+<rect x="195" y="301" width="200" height="42" rx="6" fill="#fff" stroke="#86efac" stroke-width="1.2"/>
+<text x="295" y="319" text-anchor="middle" class="t12">正则规则匹配（5类）</text>
+<text x="295" y="334" text-anchor="middle" class="t10">标准编号 · 判定结果 · 日期 · 限值 · 数字事实</text>
+<line x1="295" y1="343" x2="295" y2="361" stroke="#2563eb" stroke-width="1.5" marker-end="url(#mB)"/>
+<rect x="215" y="361" width="160" height="42" rx="6" fill="#fff" stroke="#86efac" stroke-width="1.2"/>
+<text x="295" y="386" text-anchor="middle" class="t12">上下文提取</text>
+<line x1="295" y1="403" x2="295" y2="421" stroke="#2563eb" stroke-width="1.5" marker-end="url(#mB)"/>
+<rect x="205" y="421" width="180" height="42" rx="6" fill="#dcfce7" stroke="#4ade80" stroke-width="1.2"/>
+<text x="295" y="446" text-anchor="middle" class="t12">entities[] + snippets[]</text>
+<rect x="585" y="220" width="585" height="378" rx="8" fill="#faf5ff" fill-opacity=".35" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="6,3" filter="url(#sd)"/>
+<rect x="585" y="220" width="585" height="22" rx="8" fill="#faf5ff" stroke="none"/>
+<rect x="585" y="234" width="585" height="8" fill="#faf5ff" stroke="none"/>
+<text x="601" y="235" class="ct">NER 模型训练管道</text>
+<text x="661" y="235" class="cs">  RoBERTa + CRF + FGM</text>
+<rect x="612" y="262" width="34" height="20" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
+<text x="629" y="276" text-anchor="middle" class="t8">[CLS]</text>
+<rect x="649" y="262" width="34" height="20" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
+<text x="666" y="276" text-anchor="middle" class="t8">零</text>
+<rect x="686" y="262" width="34" height="20" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
+<text x="703" y="276" text-anchor="middle" class="t8">件</text>
+<rect x="723" y="262" width="34" height="20" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
+<text x="740" y="276" text-anchor="middle" class="t8">是</text>
+<rect x="760" y="262" width="34" height="20" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
+<text x="777" y="276" text-anchor="middle" class="t8">材</text>
+<rect x="797" y="262" width="34" height="20" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
+<text x="814" y="276" text-anchor="middle" class="t8">料</text>
+<rect x="834" y="262" width="34" height="20" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
+<text x="851" y="276" text-anchor="middle" class="t8">[SEP]</text>
+<line x1="740" y1="282" x2="740" y2="296" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mP)"/>
+<rect x="640" y="296" width="200" height="42" rx="6" fill="#fff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="740" y="314" text-anchor="middle" class="t12">Token Embedding</text>
+<text x="740" y="329" text-anchor="middle" class="t10">chinese-roberta-wwm-ext · 768维</text>
+<line x1="740" y1="338" x2="740" y2="352" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mP)"/>
+<rect x="635" y="358" width="210" height="22" rx="5" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
+<line x1="750" y1="360" x2="750" y2="378" stroke="#c4b5fd" stroke-width="0.5" opacity=".4"/>
+<text x="692" y="372" text-anchor="middle" class="t8">Multi-Head Attn</text>
+<text x="797" y="372" text-anchor="middle" class="t8">Feed Forward</text>
+<path d="M 629 362 L 629 386" stroke="#c4b5fd" stroke-width="0.7" fill="none" marker-end="url(#mP)"/>
+<rect x="635" y="388" width="210" height="22" rx="5" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
+<line x1="750" y1="390" x2="750" y2="408" stroke="#c4b5fd" stroke-width="0.5" opacity=".4"/>
+<text x="692" y="402" text-anchor="middle" class="t8">Multi-Head Attn</text>
+<text x="797" y="402" text-anchor="middle" class="t8">Feed Forward</text>
+<rect x="635" y="418" width="210" height="22" rx="5" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
+<line x1="750" y1="420" x2="750" y2="438" stroke="#c4b5fd" stroke-width="0.5" opacity=".4"/>
+<text x="692" y="432" text-anchor="middle" class="t8">Multi-Head Attn</text>
+<text x="797" y="432" text-anchor="middle" class="t8">Feed Forward</text>
+<text x="740" y="414" text-anchor="middle" class="t8p">⋮  ×12 Transformer Blocks</text>
+<line x1="740" y1="440" x2="740" y2="454" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mP)"/>
+<rect x="655" y="454" width="170" height="42" rx="6" fill="#fff" stroke="#a78bfa" stroke-width="1.2"/>
+<text x="740" y="472" text-anchor="middle" class="t12">Linear 分类头</text>
+<text x="740" y="487" text-anchor="middle" class="t10">768 → 19 (9类实体·BIO标签)</text>
+<line x1="740" y1="496" x2="740" y2="510" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mP)"/>
+<text x="740" y="518" text-anchor="middle" class="t9">CRF 线性链 (前向算法训练 / Viterbi 解码推理)</text>
+<circle cx="648" cy="532" r="10" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.2"/>
+<text x="648" y="536" text-anchor="middle" class="t7">B-PART</text>
+<line x1="658" y1="532" x2="684" y2="532" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mP)"/>
+<circle cx="694" cy="532" r="10" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.2"/>
+<text x="694" y="536" text-anchor="middle" class="t7">I-PART</text>
+<line x1="704" y1="532" x2="730" y2="532" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mP)"/>
+<circle cx="740" cy="532" r="10" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.2"/>
+<text x="740" y="536" text-anchor="middle" class="t8">O</text>
+<line x1="750" y1="532" x2="776" y2="532" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mP)"/>
+<circle cx="786" cy="532" r="10" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.2"/>
+<text x="786" y="536" text-anchor="middle" class="t7">B-MAT</text>
+<line x1="796" y1="532" x2="822" y2="532" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#mP)"/>
+<circle cx="832" cy="532" r="10" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.2"/>
+<text x="832" y="536" text-anchor="middle" class="t7">I-MAT</text>
+<rect x="655" y="550" width="170" height="42" rx="6" fill="#ddd6fe" stroke="#a78bfa" stroke-width="1.2"/>
+<text x="740" y="575" text-anchor="middle" class="t12">BIO 标签序列输出</text>
+<rect x="868" y="279" width="184" height="42" rx="6" fill="#fff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="960" y="297" text-anchor="middle" class="t12">原始标注数据</text>
+<text x="960" y="312" text-anchor="middle" class="t9">JSONL · Doccano 导出</text>
+<rect x="868" y="333" width="184" height="42" rx="6" fill="#fff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="960" y="351" text-anchor="middle" class="t12">数据清洗与增强</text>
+<text x="960" y="366" text-anchor="middle" class="t9">去重·标签映射·短实体过滤</text>
+<rect x="868" y="431" width="184" height="42" rx="6" fill="#fff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="960" y="449" text-anchor="middle" class="t12">CRF NLL Loss</text>
+<text x="960" y="464" text-anchor="middle" class="t9">负对数似然损失</text>
+<rect x="868" y="485" width="184" height="42" rx="6" fill="#fff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="960" y="503" text-anchor="middle" class="t12">FGM 对抗训练</text>
+<text x="960" y="518" text-anchor="middle" class="t9">嵌入层扰动 ε=0.5</text>
+<rect x="868" y="539" width="184" height="42" rx="6" fill="#fff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="960" y="557" text-anchor="middle" class="t12">AdamW + CosineWarmup</text>
+<text x="960" y="572" text-anchor="middle" class="t9">动态超参数 · Gradient Clip</text>
+<line x1="960" y1="321" x2="960" y2="333" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mP)"/>
+<line x1="960" y1="375" x2="960" y2="431" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mP)"/>
+<line x1="960" y1="473" x2="960" y2="485" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mP)"/>
+<line x1="960" y1="527" x2="960" y2="539" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mP)"/>
+<path d="M 868 354 L 854 354 L 854 317 L 840 317" fill="none" stroke="#7c3aed" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#mP)"/>
+<rect x="818" y="307" width="52" height="16" rx="3" fill="#fff" fill-opacity=".95"/>
+<text x="844" y="319" text-anchor="middle" class="t8">训练数据</text>
+<rect x="585" y="613" width="585" height="188" rx="8" fill="#fff7ed" fill-opacity=".35" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="6,3" filter="url(#sd)"/>
+<rect x="585" y="613" width="585" height="22" rx="8" fill="#fff7ed" stroke="none"/>
+<rect x="585" y="627" width="585" height="8" fill="#fff7ed" stroke="none"/>
+<text x="601" y="628" class="ct">NER 推理管道</text>
+<text x="649" y="628" class="cs">  Inference</text>
+<rect x="656" y="636" width="148" height="42" rx="6" fill="#fff" stroke="#fdba74" stroke-width="1.2"/>
+<text x="730" y="661" text-anchor="middle" class="t12">输入文本 (Markdown)</text>
+<rect x="656" y="686" width="148" height="42" rx="6" fill="#fff" stroke="#fdba74" stroke-width="1.2"/>
+<text x="730" y="711" text-anchor="middle" class="t12">分句 + Tokenize</text>
+<rect x="630" y="736" width="200" height="42" rx="6" fill="#fff" stroke="#fdba74" stroke-width="1.2"/>
+<text x="730" y="754" text-anchor="middle" class="t12">RoBERTa → CRF Viterbi 解码</text>
+<text x="730" y="769" text-anchor="middle" class="t10">最优标签序列 · BIO → Entity Span</text>
+<line x1="730" y1="678" x2="730" y2="686" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mP)"/>
+<line x1="730" y1="728" x2="730" y2="736" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mP)"/>
+<rect x="956" y="643" width="148" height="130" rx="6" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+<text x="1030" y="659" text-anchor="middle" class="t11">9类实体输出</text>
+<text x="1030" y="675" text-anchor="middle" class="t8">零件</text>
+<text x="1030" y="685" text-anchor="middle" class="t8">工艺</text>
+<text x="1030" y="695" text-anchor="middle" class="t8">材料</text>
+<text x="1030" y="705" text-anchor="middle" class="t8">标准编号</text>
+<text x="1030" y="715" text-anchor="middle" class="t8">标准全称</text>
+<text x="1030" y="725" text-anchor="middle" class="t8">尺寸公差</text>
+<text x="1030" y="735" text-anchor="middle" class="t8">粗糙度</text>
+<text x="1030" y="745" text-anchor="middle" class="t8">设备</text>
+<text x="1030" y="755" text-anchor="middle" class="t8">工序编号</text>
+<path d="M 830 757 L 956 757" fill="none" stroke="#7c3aed" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#mP)"/>
+<path d="M 920 146 L 920 208 L 295 208 L 295 241" fill="none" stroke="#2563eb" stroke-width="1.8" marker-end="url(#mB)"/>
+<rect x="575" y="198" width="80" height="16" rx="3" fill="#fff" fill-opacity=".95"/>
+<text x="615" y="210" text-anchor="middle" class="t8">Markdown 文本</text>
+<path d="M 970 146 L 970 215 L 575 215 L 575 636 L 656 636" fill="none" stroke="#2563eb" stroke-width="1.8" marker-end="url(#mB)"/>
+<rect x="830" y="205" width="80" height="16" rx="3" fill="#fff" fill-opacity=".95"/>
+<text x="870" y="217" text-anchor="middle" class="t8">Markdown 文本</text>
+<path d="M 825 571 L 825 581 L 1050 581 L 1050 757 L 830 757" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#mP)"/>
+<rect x="1020" y="630" width="55" height="16" rx="3" fill="#fff" fill-opacity=".95"/>
+<text x="1047" y="642" text-anchor="middle" class="t8">模型权重</text>
+<rect x="330" y="804" width="540" height="34" rx="7" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="600" y="818" text-anchor="middle" class="t11">结构化实体输出 → Web UI 结果展示</text>
+<text x="600" y="831" text-anchor="middle" class="t9">9类实体：零件·工艺·材料·标准编号·标准全称·尺寸公差·粗糙度·设备·工序编号</text>
+<path d="M 295 463 L 295 799 L 380 799" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#mG)"/>
+<path d="M 730 778 L 730 799 L 820 799" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#mG)"/>
+<rect x="510" y="789" width="50" height="16" rx="3" fill="#fff" fill-opacity=".95"/>
+<text x="535" y="801" text-anchor="middle" class="t8">实体输出</text>
+<rect x="30" y="804" width="235" height="34" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+<text x="48" y="818" text-anchor="start" class="t11">图例</text>
+<line x1="42" y1="826" x2="70" y2="826" stroke="#2563eb" stroke-width="1.6" marker-end="url(#mB)"/>
+<text x="78" y="830" text-anchor="middle" class="t8">数据流</text>
+<line x1="125" y1="826" x2="153" y2="826" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#mP)"/>
+<text x="161" y="830" text-anchor="middle" class="t8">训练/模型加载</text>
+</svg>

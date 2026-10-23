@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1060" width="100%" height="100%" style="background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6" />
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
+    </marker>
+    
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-opacity="0.05" />
+    </filter>
+  </defs>
+
+  <style>
+    .bg-panel { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 6,4; rx: 8; }
+    .bg-panel-rule { fill: #f0fdf4; stroke: #bbf7d0; stroke-width: 1.5; stroke-dasharray: 6,4; rx: 8; }
+    .bg-panel-train { fill: #f5f3ff; stroke: #ddd6fe; stroke-width: 1.5; stroke-dasharray: 6,4; rx: 8; }
+    .bg-panel-infer { fill: #fffbeb; stroke: #fde68a; stroke-width: 1.5; stroke-dasharray: 6,4; rx: 8; }
+    
+    .box { stroke-width: 1.5; rx: 6; filter: url(#shadow); }
+    .box-blue { fill: #ffffff; stroke: #3b82f6; }
+    .box-green { fill: #ffffff; stroke: #10b981; }
+    .box-purple { fill: #ffffff; stroke: #8b5cf6; }
+    .box-orange { fill: #ffffff; stroke: #f59e0b; }
+    .box-dark { fill: #f8fafc; stroke: #64748b; }
+    
+    .title-main { font-size: 22px; font-weight: bold; fill: #1e293b; text-anchor: middle; }
+    .title-panel { font-size: 12px; font-weight: bold; fill: #64748b; }
+    .text-title { font-size: 14px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+    .text-desc { font-size: 11px; fill: #64748b; text-anchor: middle; }
+    .text-side { font-size: 12px; fill: #334155; text-anchor: middle; }
+    
+    .line-solid { fill: none; stroke-width: 2; }
+    .line-dashed { fill: none; stroke-width: 2; stroke-dasharray: 5,4; }
+  </style>
+
+  <text x="600" y="40" class="title-main">MinerU 系统架构与 NER 模型结构 (对齐优化版)</text>
+
+  <rect x="20" y="60" width="1160" height="130" class="bg-panel" />
+  <text x="35" y="80" class="title-panel">文档解析管道 Document Parsing Pipeline</text>
+
+  <rect x="20" y="210" width="370" height="690" class="bg-panel-rule" />
+  <text x="35" y="230" class="title-panel">规则标注引擎 Rule-based Annotation</text>
+
+  <rect x="420" y="210" width="760" height="470" class="bg-panel-train" />
+  <text x="435" y="230" class="title-panel">NER 模型训练管道 + CRF + FGM</text>
+
+  <rect x="420" y="700" width="760" height="200" class="bg-panel-infer" />
+  <text x="435" y="720" class="title-panel">NER 推理管道 Inference</text>
+
+
+  <rect x="40" y="100" width="180" height="60" class="box box-blue" />
+  <text x="130" y="128" class="text-title">PDF 文档</text>
+  <text x="130" y="148" class="text-desc">用户上传</text>
+  <path d="M 220 130 L 255 130" class="line-solid" stroke="#3b82f6" marker-end="url(#arrow-blue)" />
+
+  <rect x="260" y="100" width="180" height="60" class="box box-blue" />
+  <text x="350" y="128" class="text-title">FastAPI</text>
+  <text x="350" y="148" class="text-desc">POST /upload</text>
+  <path d="M 440 130 L 475 130" class="line-solid" stroke="#3b82f6" marker-end="url(#arrow-blue)" />
+
+  <rect x="480" y="100" width="220" height="60" class="box box-blue" />
+  <text x="590" y="128" class="text-title">mineru_runner</text>
+  <text x="590" y="148" class="text-desc">质量增强 - DPI=560 - OCR优化</text>
+  <path d="M 700 130 L 735 130" class="line-solid" stroke="#3b82f6" marker-end="url(#arrow-blue)" />
+
+  <rect x="740" y="100" width="180" height="60" class="box box-blue" />
+  <text x="830" y="128" class="text-title">MinerU</text>
+  <text x="830" y="148" class="text-desc">do_parse()</text>
+  <path d="M 920 130 L 955 130" class="line-solid" stroke="#3b82f6" marker-end="url(#arrow-blue)" />
+
+  <rect x="960" y="100" width="200" height="60" class="box box-blue" />
+  <text x="1060" y="128" class="text-title">Markdown 输出</text>
+  <text x="1060" y="148" class="text-desc">+ Layout PDF + 图片</text>
+
+
+  <path d="M 1060 160 L 1060 195 L 405 195 L 405 760 L 485 760" class="line-solid" stroke="#3b82f6" marker-end="url(#arrow-blue)" />
+  <path d="M 405 195 L 205 195 L 205 255" class="line-solid" stroke="#3b82f6" marker-end="url(#arrow-blue)" />
+  <text x="750" y="190" class="text-desc" fill="#3b82f6">Markdown 文本</text>
+
+
+  <rect x="100" y="260" width="210" height="50" class="box box-green" />
+  <text x="205" y="290" class="text-title">Markdown 文本输入</text>
+  <path d="M 205 310 L 205 345" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+
+  <rect x="100" y="350" width="210" height="60" class="box box-green" />
+  <text x="205" y="378" class="text-title">正则规则匹配 (5类)</text>
+  <text x="205" y="398" class="text-desc">标准编号-判定结果-日期-数值-数字事实</text>
+  <path d="M 205 410 L 205 445" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+
+  <rect x="100" y="450" width="210" height="50" class="box box-green" />
+  <text x="205" y="480" class="text-title">上下文特征提取</text>
+  <path d="M 205 500 L 205 535" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+
+  <rect x="100" y="540" width="210" height="50" class="box box-green" />
+  <text x="205" y="570" class="text-title">候选实体池构建</text>
+  <path d="M 205 590 L 205 625" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+
+  <rect x="100" y="630" width="210" height="50" class="box box-green" />
+  <text x="205" y="660" class="text-title">启发式规则校验与过滤</text>
+  <path d="M 205 680 L 205 725" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+
+  <rect x="100" y="730" width="210" height="50" class="box box-green" />
+  <text x="205" y="760" class="text-title">实体边界冲突消解</text>
+  <path d="M 205 780 L 205 815" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+
+  <rect x="100" y="820" width="210" height="50" class="box box-green" />
+  <text x="205" y="850" class="text-title">属性结构化对齐</text>
+  <path d="M 205 870 L 205 905" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+
+  <rect x="100" y="910" width="210" height="50" class="box box-green" style="stroke-width: 2.5" />
+  <text x="205" y="940" class="text-title">entities[] + snippets[]</text>
+
+
+  <rect x="495" y="245" width="230" height="30" fill="#f8fafc" stroke="#cbd5e1" rx="4" stroke-dasharray="4,2"/>
+  <text x="610" y="265" class="text-desc" font-weight="bold" fill="#64748b">[CLS] &#160;&#160; 零 &#160;&#160; 件 &#160;&#160; 是 &#160;&#160; 材 &#160;&#160; 料 &#160;&#160; [SEP]</text>
+
+  <rect x="495" y="280" width="230" height="60" class="box box-purple" />
+  <text x="610" y="308" class="text-title">Token Embedding</text>
+  <text x="610" y="328" class="text-desc">chinese-roberta-wwm-ext - 768维</text>
+  <path d="M 610 340 L 610 375" class="line-solid" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+
+  <rect x="495" y="380" width="230" height="150" class="box box-purple" />
+  <line x1="510" y1="410" x2="710" y2="410" stroke="#e2e8f0" stroke-width="2"/>
+  <line x1="510" y1="440" x2="710" y2="440" stroke="#e2e8f0" stroke-width="2"/>
+  <line x1="510" y1="470" x2="710" y2="470" stroke="#e2e8f0" stroke-width="2"/>
+  <line x1="510" y1="500" x2="710" y2="500" stroke="#e2e8f0" stroke-width="2"/>
+  <text x="610" y="445" class="text-title">Multi-Head Attn x 12</text>
+  <text x="610" y="465" class="text-desc">Feed Forward / Transformer Blocks</text>
+  <path d="M 610 530 L 610 565" class="line-solid" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+
+  <rect x="495" y="570" width="230" height="60" class="box box-purple" />
+  <text x="610" y="598" class="text-title">Linear 分类头</text>
+  <text x="610" y="618" class="text-desc">768 → 19 (9类实体-BIO标签)</text>
+  <path d="M 610 630 L 610 655" class="line-dashed" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+
+  <rect x="535" y="660" width="150" height="40" class="box box-purple" style="fill:#f3e8ff" />
+  <text x="610" y="685" class="text-title">BIO 标签序列输出</text>
+
+
+  <rect x="850" y="280" width="210" height="60" class="box box-purple" />
+  <text x="955" y="308" class="text-title">原始标注数据</text>
+  <text x="955" y="328" class="text-desc">JSONL - Doccano 导出</text>
+  <path d="M 955 340 L 955 375" class="line-solid" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+  <path d="M 850 310 L 730 310" class="line-dashed" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+  <text x="790" y="305" class="text-desc">训练数据</text>
+
+  <rect x="850" y="380" width="210" height="60" class="box box-purple" />
+  <text x="955" y="408" class="text-title">数据清洗与增强</text>
+  <text x="955" y="428" class="text-desc">去重-标签映射-短实体过滤</text>
+  
+  <rect x="850" y="470" width="210" height="60" class="box box-purple" />
+  <text x="955" y="498" class="text-title">CRF NLL Loss</text>
+  <text x="955" y="518" class="text-desc">负对数似然损失</text>
+  <path d="M 955 530 L 955 565" class="line-solid" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+  <path d="M 685 680 L 790 680 L 790 500 L 845 500" class="line-dashed" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+
+  <rect x="850" y="570" width="210" height="60" class="box box-purple" />
+  <text x="955" y="598" class="text-title">FGM 对抗训练</text>
+  <text x="955" y="618" class="text-desc">嵌入层扰动 ε=0.5</text>
+  <path d="M 955 630 L 955 665" class="line-solid" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+
+  <rect x="850" y="670" width="210" height="60" class="box box-purple" />
+  <text x="955" y="698" class="text-title">AdamW + CosineWarmup</text>
+  <text x="955" y="718" class="text-desc">动态超参数 - Gradient Clip</text>
+
+
+  <rect x="495" y="730" width="230" height="50" class="box box-orange" />
+  <text x="610" y="760" class="text-title">输入文本 (Markdown)</text>
+  <path d="M 610 780 L 610 815" class="line-solid" stroke="#f59e0b" marker-end="url(#arrow-orange)" />
+
+  <rect x="495" y="820" width="230" height="50" class="box box-orange" />
+  <text x="610" y="850" class="text-title">分句 + Tokenize</text>
+  <path d="M 610 870 L 610 905" class="line-solid" stroke="#f59e0b" marker-end="url(#arrow-orange)" />
+
+  <rect x="495" y="910" width="230" height="50" class="box box-orange" />
+  <text x="610" y="932" class="text-title">RoBERTa → CRF Viterbi 解码</text>
+  <text x="610" y="952" class="text-desc">最优标签序列 - BIO → Entity Span</text>
+
+  <path d="M 1060 700 L 1150 700 L 1150 935 L 730 935" class="line-dashed" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+  <rect x="1100" y="800" width="60" height="24" fill="#ffffff" stroke="#ddd6fe" rx="4"/>
+  <text x="1130" y="816" class="text-desc" fill="#8b5cf6">模型权重</text>
+
+  <rect x="850" y="730" width="210" height="230" class="box box-orange" style="fill: #fffbeb; stroke-dasharray: 4,4;" />
+  <text x="955" y="760" class="text-title">9类实体输出规范</text>
+  <line x1="880" y1="775" x2="1030" y2="775" stroke="#fcd34d" stroke-width="1" />
+  <text x="955" y="800" class="text-side">1. 零件 (Part)</text>
+  <text x="955" y="820" class="text-side">2. 工艺 (Process)</text>
+  <text x="955" y="840" class="text-side">3. 材料 (Material)</text>
+  <text x="955" y="860" class="text-side">4. 标准编号 (Standard No.)</text>
+  <text x="955" y="880" class="text-side">5. 标准全称 (Standard Name)</text>
+  <text x="955" y="900" class="text-side">6. 尺寸公差 (Dimension/Tol.)</text>
+  <text x="955" y="920" class="text-side">7. 粗糙度 (Roughness)</text>
+  <text x="955" y="940" class="text-side">8. 设备 (Equipment)</text>
+  <text x="955" y="940" class="text-side">...</text>
+  
+  <path d="M 725 935 L 845 935" class="line-dashed" stroke="#f59e0b" marker-end="url(#arrow-orange)" />
+
+
+  <rect x="250" y="1000" width="700" height="50" class="box box-dark" />
+  <text x="600" y="1022" class="text-title" font-size="16">结构化实体输出 → Web UI 结果展示</text>
+  <text x="600" y="1042" class="text-desc">汇聚9类实体: 零件-工艺-材料-标准编号-标准全称-尺寸公差-粗糙度-设备-工序编号</text>
+
+  <path d="M 205 960 L 205 1025 L 245 1025" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+  <path d="M 610 960 L 610 995" class="line-solid" stroke="#10b981" marker-end="url(#arrow-green)" />
+  <text x="580" y="985" class="text-desc" fill="#10b981">实体输出</text>
+
+
+  <rect x="20" y="1000" width="200" height="50" fill="#ffffff" stroke="#cbd5e1" rx="4" />
+  <text x="35" y="1015" class="text-title" font-size="12" text-anchor="start">图例</text>
+  
+  <path d="M 35 1035 L 65 1035" class="line-solid" stroke="#3b82f6" marker-end="url(#arrow-blue)" />
+  <text x="75" y="1039" class="text-desc" text-anchor="start">数据流</text>
+  
+  <path d="M 125 1035 L 155 1035" class="line-dashed" stroke="#8b5cf6" marker-end="url(#arrow-purple)" />
+  <text x="165" y="1039" class="text-desc" text-anchor="start">模型加载</text>
+</svg>
