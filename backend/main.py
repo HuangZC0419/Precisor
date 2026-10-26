@@ -16,13 +16,35 @@ import traceback
 import uuid
 import zipfile
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
-from model_service import train_model, run_inference, list_models, get_model, delete_model, continue_train, TrainingProgressCallback, parse_jsonl_training_data, evaluate_model
+from model_service import (
+    train_model,
+    run_inference,
+    list_models,
+    get_model,
+    delete_model,
+    continue_train,
+    TrainingProgressCallback,
+    parse_jsonl_training_data,
+    evaluate_model,
+    _split_sentences,
+    _normalize_text,
+)
+
+from dataset_store import (
+    save_dataset,
+    list_datasets,
+    get_dataset,
+    delete_dataset,
+    load_dataset_examples,
+)
 
 app = FastAPI()
 
@@ -36,6 +58,15 @@ app.add_middleware(
 
 OUTPUT_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "output")
 INPUT_BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "input")
+
+# 持久模型 id 由 uuid4().hex[:12] 生成；该模式同时阻断路径穿越。
+_MODEL_ID_PATTERN = re.compile(r"[0-9a-f]{12}")
+
+# 数据集上传大小上限（20MB），独立常量便于测试与后续调整。
+DATASET_MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+# 训练任务全局互斥：PyTorch 训练占用大量 CPU/GPU，同一进程只允许一个训练任务。
+TRAINING_LOCK = threading.Lock()
 
 
 def get_runner_script_path() -> str:
@@ -651,6 +682,300 @@ def build_annotation_result(markdown_text: str, rule_ids: list[str] | None = Non
     }
 
 
+def normalize_text_for_match(text: str) -> str:
+    """复用训练侧的 1:1 归一化，保证模型偏移与规则匹配使用同一规则。"""
+    return _normalize_text(text)
+
+
+def locate_entity_in_sentence(sentence: str, entity_text: str) -> tuple[int, int] | None:
+    entity_text = (entity_text or "").strip()
+    if not sentence or not entity_text:
+        return None
+    start = sentence.find(entity_text)
+    if start >= 0:
+        return start, start + len(entity_text)
+
+    normalized_sentence = normalize_text_for_match(sentence)
+    normalized_entity = normalize_text_for_match(entity_text)
+    start = normalized_sentence.find(normalized_entity)
+    if start >= 0:
+        return start, start + len(normalized_entity)
+
+    compact_entity = re.sub(r"\s+", "", entity_text)
+    if not compact_entity:
+        return None
+    compact_positions = [i for i, ch in enumerate(sentence) if not ch.isspace()]
+    compact_sentence = re.sub(r"\s+", "", sentence)
+    match_index = compact_sentence.find(compact_entity)
+    if match_index < 0:
+        return None
+    start = compact_positions[match_index]
+    end = compact_positions[match_index + len(compact_entity) - 1] + 1
+    return start, end
+
+
+def collect_rule_spans_for_sentence(
+    sentence: str,
+    rule_ids: list[str],
+    rule_labels: dict[str, str],
+) -> list[dict[str, Any]]:
+    spans: list[dict[str, Any]] = []
+
+    def add(rule_id: str, span_type: str, match: re.Match[str]) -> None:
+        text = match.group(0)
+        if not text:
+            return
+        spans.append(
+            {
+                "id": f"{rule_id}:{span_type}:{text}",
+                "start": match.start(),
+                "end": match.end(),
+                "label": rule_labels[rule_id],
+                "text": text,
+                "rule_id": rule_id,
+                "sources": ["rule"],
+            }
+        )
+
+    if "standards" in rule_ids:
+        for match in STANDARD_CODE_PATTERN.finditer(sentence):
+            if len(match.group(0)) >= 4:
+                add("standards", "standard", match)
+
+    if "dates" in rule_ids:
+        for match in DATE_PATTERN.finditer(sentence):
+            if is_plausible_date_match(match, sentence):
+                add("dates", "date", match)
+
+    if "limits" in rule_ids:
+        for match in find_limit_matches(sentence):
+            add("limits", "metric", match)
+
+    if "numeric_facts" in rule_ids:
+        # limits 已用“限值指标”独占带单位的指标，numeric_facts 不再重复产出 metric。
+        skip_metric = "limits" in rule_ids
+        for entity_type, match in find_numeric_matches(sentence):
+            if skip_metric and entity_type == "metric":
+                continue
+            add("numeric_facts", entity_type, match)
+
+    return spans
+
+
+def dedupe_export_spans(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[tuple[int, int, str, str], dict[str, Any]] = {}
+    for span in spans:
+        key = (span["start"], span["end"], span["text"], span["label"])
+        if key not in merged:
+            merged[key] = {
+                **span,
+                "sources": set(span.get("sources") or []),
+                "_model_labels": set(span.get("_model_labels") or []),
+            }
+        else:
+            merged[key]["sources"] |= set(span.get("sources") or [])
+            merged[key]["_model_labels"] |= set(span.get("_model_labels") or [])
+    result: list[dict[str, Any]] = []
+    for span in merged.values():
+        span["sources"] = sorted(span["sources"])
+        result.append(span)
+    result.sort(key=lambda item: (item["start"], item["end"]))
+    return result
+
+
+def collect_model_spans_by_sentence(
+    markdown_text: str,
+    model_id: str,
+    threshold: float,
+) -> dict[int, list[dict[str, Any]]]:
+    result = run_inference(model_id=model_id, document_text=markdown_text)
+    by_sentence: dict[int, list[dict[str, Any]]] = {}
+    for entity in result.get("entities", []):
+        confidence = float(entity.get("confidence") or 0)
+        if confidence < threshold:
+            continue
+        sentence_index = entity.get("sentence_index")
+        if sentence_index is None:
+            continue
+        # run_inference 的 label 字段存放实体文本，rule_label/rule_id 才是模型标签
+        label = str(
+            entity.get("rule_label") or entity.get("rule_id") or entity.get("type") or ""
+        ).strip()
+        original_sentence = str(entity.get("sentence_original") or "")
+        if not label or not original_sentence:
+            continue
+        start = entity.get("start_offset")
+        end = entity.get("end_offset")
+        if start is None or end is None:
+            located = locate_entity_in_sentence(
+                original_sentence, str(entity.get("text") or "")
+            )
+            if located is None:
+                continue
+            start, end = located
+        start, end = int(start), int(end)
+        if start < 0 or start >= end or end > len(original_sentence):
+            continue
+        text = original_sentence[start:end]
+        if not text:
+            continue
+        by_sentence.setdefault(int(sentence_index), []).append(
+            {
+                "id": f"{label}:model:{text}",
+                "start": start,
+                "end": end,
+                "label": label,
+                "text": text,
+                "rule_id": label,
+                "sources": ["model"],
+                "_model_labels": [label],
+            }
+        )
+    return by_sentence
+
+
+def build_annotation_export_rows(
+    markdown_text: str,
+    *,
+    task_id: str,
+    file_name: str,
+    file_number: int,
+    rule_ids: list[str],
+    model_id: str | None = None,
+    model_conf_threshold: float = 0.0,
+) -> list[dict[str, Any]]:
+    rule_labels = {rule["id"]: rule["label"] for rule in ANNOTATION_RULE_OPTIONS}
+    active_rules = [rule["id"] for rule in ANNOTATION_RULE_OPTIONS if rule["id"] in rule_ids]
+
+    raw_sentences = _split_sentences(markdown_text)
+    sentence_records: list[tuple[int, str]] = []
+    for index, sentence in enumerate(raw_sentences):
+        if not sentence or is_structural_noise_sentence(sentence):
+            continue
+        sentence_records.append((index, sentence))
+
+    model_spans_by_sentence: dict[int, list[dict[str, Any]]] = {}
+    if model_id:
+        model_spans_by_sentence = collect_model_spans_by_sentence(
+            markdown_text, model_id, model_conf_threshold
+        )
+
+    payloads: list[dict[str, Any]] = []
+    for sentence_index, sentence in sentence_records:
+        spans = collect_rule_spans_for_sentence(sentence, active_rules, rule_labels)
+        spans.extend(model_spans_by_sentence.get(sentence_index, []))
+        spans = dedupe_export_spans(spans)
+        decision_hit = "decisions" in active_rules and is_decision_sentence(sentence)
+        decision_tags = (
+            dedupe_preserve_order(
+                [clean_annotation_text(m.group(0)) for m in STANDARD_CODE_PATTERN.finditer(sentence)]
+            )
+            if decision_hit
+            else []
+        )
+        if not spans and not decision_hit:
+            continue
+        payloads.append(
+            {
+                "sentence": sentence,
+                "spans": spans,
+                "decision_hit": decision_hit,
+                "decision_tags": decision_tags,
+            }
+        )
+
+    annotations_by_line: list[list[dict[str, Any]]] = [[] for _ in payloads]
+    sequence = 0
+
+    for rule_id in active_rules:
+        for line_index, payload in enumerate(payloads):
+            if rule_id == "decisions":
+                if not payload["decision_hit"]:
+                    continue
+                annotations_by_line[line_index].append(
+                    {
+                        "id": f"{rule_id}:{sequence}",
+                        "rule_id": rule_id,
+                        "label": rule_labels[rule_id],
+                        "tags": payload["decision_tags"],
+                        "sources": ["rule"],
+                    }
+                )
+                sequence += 1
+                continue
+
+            rule_spans = [span for span in payload["spans"] if span["rule_id"] == rule_id]
+            if not rule_spans:
+                continue
+            annotations_by_line[line_index].append(
+                {
+                    "id": f"{rule_id}:{sequence}",
+                    "rule_id": rule_id,
+                    "label": rule_labels[rule_id],
+                    "tags": dedupe_preserve_order([span["text"] for span in rule_spans]),
+                    "sources": sorted({src for span in rule_spans for src in span["sources"]}),
+                }
+            )
+            sequence += 1
+
+    model_labels: list[str] = []
+    for payload in payloads:
+        for span in payload["spans"]:
+            for label in span.get("_model_labels") or []:
+                if label not in model_labels:
+                    model_labels.append(label)
+
+    for label in model_labels:
+        for line_index, payload in enumerate(payloads):
+            label_spans = [
+                span
+                for span in payload["spans"]
+                if label in (span.get("_model_labels") or [])
+            ]
+            if not label_spans:
+                continue
+            annotations_by_line[line_index].append(
+                {
+                    "id": f"{label}:{sequence}",
+                    "rule_id": label,
+                    "label": label,
+                    "tags": dedupe_preserve_order([span["text"] for span in label_spans]),
+                    "sources": ["model"],
+                }
+            )
+            sequence += 1
+
+    rows: list[dict[str, Any]] = []
+    for line_index, payload in enumerate(payloads):
+        annotations = annotations_by_line[line_index]
+        if not annotations:
+            continue
+        spans = [
+            {key: value for key, value in span.items() if not key.startswith("_")}
+            for span in payload["spans"]
+        ]
+        sources = sorted(
+            {src for annotation in annotations for src in annotation["sources"]}
+            | {src for span in spans for src in span["sources"]}
+        )
+        rows.append(
+            {
+                "file_name": file_name,
+                "file_number": file_number,
+                "task_id": task_id,
+                "text": payload["sentence"],
+                "annotations": annotations,
+                "spans": spans,
+                "relations": [],
+                "meta": {
+                    "export_format": "mineru-annotation-jsonl-v1",
+                    "annotation_sources": sources,
+                },
+            }
+        )
+    return rows
+
+
 def dedupe_preserve_order(items: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -917,49 +1242,56 @@ async def get_annotation_options():
     return {"rules": ANNOTATION_RULE_OPTIONS}
 
 
-@app.post("/model/train")
-async def train_model_endpoint(body: dict[str, Any]):
-    progress_queue = queue.Queue()
-    loop = asyncio.get_event_loop()
+def create_training_stream(train_callable) -> Response:
+    """把任意训练函数包装成带心跳的 SSE 响应；train_callable 接收进度回调。
 
-    def run_training():
+    训练线程在返回响应前启动，确保即使客户端不消费流，训练结束后也会释放
+    全局训练锁；并发训练直接返回 409。
+    """
+    progress_queue: queue.Queue = queue.Queue()
+    loop = asyncio.get_running_loop()
+
+    if not TRAINING_LOCK.acquire(blocking=False):
+        return JSONResponse(
+            status_code=409,
+            content={"message": "已有训练任务正在进行，请稍后再试"},
+        )
+
+    def run_training() -> None:
         try:
             callback = TrainingProgressCallback(progress_queue)
-            result = train_model(
-                mode=body.get("mode", "quick"),
-                model_name=body.get("model_name", "未命名模型"),
-                labels=body.get("labels", []),
-                examples=body["examples"],
-                progress_callback=callback,
-                document_text=body.get("document_text", None),
-            )
+            result = train_callable(callback)
             progress_queue.put({"type": "complete", "result": result})
-        except Exception as e:
-            progress_queue.put({
-                "type": "error",
-                "message": str(e),
-                "detail": traceback.format_exc(),
-            })
+        except Exception as exc:
+            progress_queue.put(
+                {
+                    "type": "error",
+                    "message": str(exc),
+                    "detail": traceback.format_exc(),
+                }
+            )
+        finally:
+            TRAINING_LOCK.release()
+
+    thread = threading.Thread(target=run_training, daemon=True)
+    try:
+        thread.start()
+    except Exception:
+        TRAINING_LOCK.release()
+        raise
 
     async def event_stream():
-        thread = threading.Thread(target=run_training, daemon=True)
-        thread.start()
-
         while True:
             try:
                 data = await loop.run_in_executor(None, progress_queue.get, True, 0.3)
             except queue.Empty:
-                # heartbeat to keep connection alive
                 yield ": heartbeat\n\n"
                 if not thread.is_alive():
                     break
                 continue
-
             yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-
             if data["type"] in ("complete", "error"):
                 break
-
         thread.join(timeout=5)
 
     return StreamingResponse(
@@ -971,6 +1303,21 @@ async def train_model_endpoint(body: dict[str, Any]):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/model/train")
+async def train_model_endpoint(body: dict[str, Any]):
+    def run(callback: TrainingProgressCallback):
+        return train_model(
+            mode=body.get("mode", "quick"),
+            model_name=body.get("model_name", "未命名模型"),
+            labels=body.get("labels", []),
+            examples=body["examples"],
+            progress_callback=callback,
+            document_text=body.get("document_text", None),
+        )
+
+    return create_training_stream(run)
 
 
 @app.post("/model/infer")
@@ -1290,6 +1637,103 @@ async def get_result_annotations(task_id: str, body: dict[str, Any] | None = Non
     return build_annotation_result(markdown_text, rule_ids)
 
 
+def get_task_file_name(task_id: str) -> str:
+    task = progress_store.get(task_id)
+    if task and task.get("file_name"):
+        return str(task["file_name"])
+    input_dir = os.path.join(INPUT_BASE, task_id)
+    if os.path.isdir(input_dir):
+        files = sorted(name for name in os.listdir(input_dir) if not name.startswith("."))
+        if files:
+            return files[0]
+    return f"{task_id[:8]}.md"
+
+
+def get_task_sequence_number(task_id: str) -> int:
+    if not os.path.isdir(INPUT_BASE):
+        return 1
+    entries: list[tuple[float, str]] = []
+    for name in os.listdir(INPUT_BASE):
+        path = os.path.join(INPUT_BASE, name)
+        if not os.path.isdir(path):
+            continue
+        try:
+            entries.append((os.path.getctime(path), name))
+        except OSError:
+            continue
+    entries.sort()
+    for index, (_, name) in enumerate(entries, start=1):
+        if name == task_id:
+            return index
+    return 1
+
+
+def build_export_content_disposition(file_stem: str) -> str:
+    """构建纯 ASCII 的 Content-Disposition，中文文件名走 RFC 5987。
+
+    Starlette 使用 latin-1 编码响应头，直接放中文会抛 UnicodeEncodeError。
+    """
+    export_name = f"{file_stem}_annotations.jsonl"
+    return (
+        'attachment; filename="annotations.jsonl"; '
+        f"filename*=UTF-8''{quote(export_name)}"
+    )
+
+
+@app.post("/result/{task_id}/export-annotations")
+def export_annotations_endpoint(task_id: str, body: dict[str, Any] | None = None):
+    # 同步端点：FastAPI 会放入线程池执行，避免 PyTorch 推理阻塞事件循环。
+    body = body or {}
+    raw_rules = body.get("rules", [])
+    if not isinstance(raw_rules, list):
+        return JSONResponse(status_code=400, content={"message": "rules 必须是数组"})
+
+    valid_rule_ids = {rule["id"] for rule in ANNOTATION_RULE_OPTIONS}
+    rule_ids = [
+        str(rule_id) for rule_id in raw_rules if str(rule_id) in valid_rule_ids
+    ]
+    model_id = str(body.get("model_id") or "").strip()
+    if model_id and not _MODEL_ID_PATTERN.fullmatch(model_id):
+        return JSONResponse(status_code=400, content={"message": "model_id 格式错误"})
+    try:
+        threshold = float(body.get("model_conf_threshold") or 0)
+    except (TypeError, ValueError):
+        threshold = 0.0
+    threshold = min(max(threshold, 0.0), 1.0)
+
+    if not rule_ids and not model_id:
+        return JSONResponse(
+            status_code=400, content={"message": "请至少选择一个标注规则或模型"}
+        )
+
+    markdown_text = load_task_markdown(task_id)
+    if markdown_text is None:
+        return JSONResponse(status_code=404, content={"message": "Markdown not found for this task"})
+
+    try:
+        file_name = get_task_file_name(task_id)
+        rows = build_annotation_export_rows(
+            markdown_text,
+            task_id=task_id,
+            file_name=file_name,
+            file_number=get_task_sequence_number(task_id),
+            rule_ids=rule_ids,
+            model_id=model_id or None,
+            model_conf_threshold=threshold,
+        )
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"message": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"message": f"导出失败: {exc}"})
+
+    content = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
+    if content:
+        content += "\n"
+    file_stem = Path(file_name).stem or task_id[:8]
+    headers = {"Content-Disposition": build_export_content_disposition(file_stem)}
+    return Response(content=content, media_type="application/x-ndjson", headers=headers)
+
+
 @app.put("/result/{task_id}/md")
 async def save_result_md(task_id: str, body: dict[str, Any]):
     md_path = find_task_md_path(task_id)
@@ -1326,6 +1770,103 @@ async def get_result_image(task_id: str, image_path: str):
     return JSONResponse(status_code=404, content={"message": "Image not found"})
 
 
+# ── 训练数据集库 ──────────────────────────────────────────
+
+@app.post("/datasets/upload")
+async def upload_dataset_endpoint(
+    file: UploadFile = File(...),
+    name: str = Form(""),
+):
+    raw = await file.read()
+    if len(raw) > DATASET_MAX_UPLOAD_BYTES:
+        limit_mb = DATASET_MAX_UPLOAD_BYTES // (1024 * 1024)
+        return JSONResponse(
+            status_code=413,
+            content={"message": f"文件过大，最大支持 {limit_mb}MB"},
+        )
+    try:
+        # utf-8-sig 兼容 Windows 保存的带 BOM 文件。
+        content = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "文件编码错误，请上传 UTF-8 编码的 JSONL 文件"},
+        )
+    try:
+        meta = await run_in_threadpool(save_dataset, content, file.filename or "", name)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"message": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"message": f"数据集保存失败: {exc}"})
+    return meta
+
+
+@app.get("/datasets")
+async def list_datasets_endpoint():
+    return list_datasets()
+
+
+@app.get("/datasets/{dataset_id}")
+async def get_dataset_endpoint(dataset_id: str):
+    try:
+        return get_dataset(dataset_id)
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"message": str(exc)})
+
+
+@app.delete("/datasets/{dataset_id}")
+async def delete_dataset_endpoint(dataset_id: str):
+    try:
+        delete_dataset(dataset_id)
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"message": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"message": f"删除失败: {exc}"})
+    return {"message": "ok"}
+
+
+@app.post("/model/train-from-dataset")
+async def train_from_dataset_endpoint(body: dict[str, Any]):
+    raw_dataset_ids = body.get("dataset_ids") or []
+    if not isinstance(raw_dataset_ids, list):
+        return JSONResponse(status_code=400, content={"message": "dataset_ids 格式错误"})
+    dataset_ids = [str(item) for item in raw_dataset_ids if str(item).strip()]
+    if not dataset_ids:
+        return JSONResponse(status_code=400, content={"message": "请至少选择一个训练数据集"})
+
+    try:
+        examples = await run_in_threadpool(load_dataset_examples, dataset_ids)
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"message": str(exc)})
+
+    if not examples:
+        return JSONResponse(
+            status_code=400, content={"message": "所选数据集没有有效训练样本"}
+        )
+
+    model_name = str(body.get("model_name") or "未命名模型")
+    try:
+        epochs = int(body.get("epochs") or 0)
+        batch_size = int(body.get("batch_size") or 0)
+        lr = float(body.get("lr") or 0)
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=400, content={"message": "训练参数格式错误"})
+
+    def run(callback: TrainingProgressCallback):
+        return train_model(
+            mode="persistent",
+            model_name=model_name,
+            labels=[],
+            examples=examples,
+            progress_callback=callback,
+            epochs=epochs,
+            batch_size=batch_size,
+            lr=lr,
+        )
+
+    return create_training_stream(run)
+
+
 # ── 模型训练：上传 JSONL 数据集 ──────────────────────────────
 
 @app.post("/model/upload-and-train")
@@ -1346,59 +1887,19 @@ async def upload_and_train_endpoint(
     if not examples:
         return JSONResponse(status_code=400, content={"message": "未解析到有效训练数据，请检查 JSONL 格式"})
 
-    progress_queue = queue.Queue()
-    loop = asyncio.get_event_loop()
+    def run(callback: TrainingProgressCallback):
+        return train_model(
+            mode="persistent",
+            model_name=model_name,
+            labels=[],
+            examples=examples,
+            progress_callback=callback,
+            epochs=epochs,
+            batch_size=batch_size,
+            lr=lr,
+        )
 
-    def run_training():
-        try:
-            callback = TrainingProgressCallback(progress_queue)
-            result = train_model(
-                mode="persistent",
-                model_name=model_name,
-                labels=[],
-                examples=examples,
-                progress_callback=callback,
-                epochs=epochs,
-                batch_size=batch_size,
-                lr=lr,
-            )
-            progress_queue.put({"type": "complete", "result": result})
-        except Exception as e:
-            progress_queue.put({
-                "type": "error",
-                "message": str(e),
-                "detail": traceback.format_exc(),
-            })
-
-    async def event_stream():
-        thread = threading.Thread(target=run_training, daemon=True)
-        thread.start()
-
-        while True:
-            try:
-                data = await loop.run_in_executor(None, progress_queue.get, True, 0.3)
-            except queue.Empty:
-                yield ": heartbeat\n\n"
-                if not thread.is_alive():
-                    break
-                continue
-
-            yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-            if data["type"] in ("complete", "error"):
-                break
-
-        thread.join(timeout=5)
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return create_training_stream(run)
 
 
 # ── 模型下载 ──────────────────────────────────────────────

@@ -94,14 +94,17 @@
 10. `relations` 恒为 `[]`
 11. `meta.annotation_sources`：该行 spans + annotations 中出现过的 sources 并集，排序
 12. 只输出至少包含 1 条 annotation 的句子
+13. 当 `limits` 与 `numeric_facts` 同时启用时，`numeric_facts` 只保留 `cas`/`numeric` 类型，带单位的指标（`metric`）由 `limits` 独占，避免同一区间出现矛盾标签
+14. 仓库根 `测试文本_annotations.jsonl` 仅作为字段结构基准；实际分句与命中内容由当前 Markdown 和所选规则决定，不要求逐行内容一致
 
 ### 2.4 前端
 
 - 快速标注页工具栏「复制 MD」旁新增「导出标注」按钮
 - 请求参数：当前 `selectedAnnotationRules`、`selectedPersistentModelId`、`modelConfThreshold / 100`
+- 模型仅在用户至少执行过一次模型标注后才纳入导出，避免误触发全量推理
 - 两者均为空时按钮禁用
 - 使用 axios `responseType: 'blob'` 下载，解析 `Content-Disposition` 文件名；失败时 toast 提示
-- 无结果时 toast：`当前没有可导出的标注结果`
+- 无结果（0 字节）时不下载，toast：`当前没有可导出的标注结果`
 
 ## 3. 训练数据集库
 
@@ -122,10 +125,10 @@
   "uploaded_at": "2026-10-26 12:00:00",
   "sample_count": 4,
   "entity_count": 6,
-  "label_count": 3,
-  "label_counts": {"标准条文": 3, "判定结论": 1, "数值信息": 2},
-  "char_count": 300,
-  "avg_text_length": 75.0,
+  "label_count": 4,
+  "label_counts": {"标准条文": 3, "数值信息": 2, "判定结论": 1, "限值指标": 1},
+  "char_count": 583,
+  "avg_text_length": 145.8,
   "unlabeled_sample_count": 0,
   "format": "mineru-annotation-jsonl-v1"
 }
@@ -134,8 +137,8 @@
 统计口径：
 
 - `sample_count`：含非空 `text` 的有效行数
-- `entity_count`：所有 span/entity 总数
-- `label_counts`：按 label 计数
+- `entity_count`：所有 span/entity 总数（只统计 span）
+- `label_counts`：按 label 计数；包含仅出现在 `annotations`、没有对应 span 的类别（如 `判定结论`），同一行中已作为 span 出现的标签不重复计数
 - `label_count`：`label_counts` 的键数量
 - `char_count`：所有 `text` 的字符总数
 - `avg_text_length`：`char_count / sample_count`，保留 1 位小数

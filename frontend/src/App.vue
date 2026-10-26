@@ -578,6 +578,14 @@
               <button class="tool-btn" @click="copyMarkdown" title="复制 Markdown">
                 复制 MD
               </button>
+              <button
+                class="tool-btn"
+                :disabled="exportLoading || annotationLoading || modelAnnotationLoading || (!selectedAnnotationRules.length && !(selectedPersistentModelId && modelAnnotationLastRunAt))"
+                @click="exportAnnotations"
+                title="导出当前规则+模型标注结果为 JSONL"
+              >
+                {{ exportLoading ? '导出中...' : '导出标注' }}
+              </button>
             </div>
           </div>
 
@@ -845,31 +853,109 @@
 
                 <!-- 训练表单 -->
                 <div v-if="!isTraining" class="train-form-section">
-                <!-- 第一行：文件上传 + 模型名称 -->
-                <div class="train-top-row">
-                  <label class="train-file-upload" :class="{ 'has-file': modelUploadFile }" @click="!isTraining && modelFileInput?.click()">
-                    <div class="train-file-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="17 8 12 3 7 8" />
-                        <line x1="12" y1="3" x2="12" y2="15" />
-                      </svg>
+                <!-- 训练数据集 + 模型名称 -->
+                <div class="dataset-section">
+                  <div class="dataset-section-head">
+                    <div>
+                      <div class="dataset-section-title">训练数据集</div>
+                      <p class="dataset-section-desc">上传后自动入库，可多选合并训练</p>
                     </div>
-                    <div class="train-file-text">
-                      <span v-if="!modelUploadFile" class="train-file-placeholder">点击上传 JSONL 训练数据文件</span>
-                      <span v-else class="train-file-name">{{ modelUploadFile.name }}</span>
+                    <div class="dataset-summary-pill" v-if="datasets.length">
+                      {{ datasets.length }} 个数据集 · {{ allDatasetSampleCount }} 样本 · {{ allDatasetLabelCount }} 类别
                     </div>
-                    <button v-if="modelUploadFile && !isTraining" class="train-file-remove" @click.stop="modelUploadFile = null" title="移除文件">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  </label>
-                  <input ref="modelFileInput" type="file" class="hidden-input" accept=".jsonl,.json" @change="onModelFileChange" />
-                  <div class="train-name-input">
-                    <label class="config-label">模型名称</label>
-                    <input v-model="trainModelName" class="select-field" placeholder="输入模型名称" :disabled="isTraining" />
                   </div>
+
+                  <label
+                    class="dataset-upload-zone"
+                    :class="{ 'is-uploading': datasetUploading }"
+                    @click="!datasetUploading && !isTraining && datasetFileInput?.click()"
+                    @dragover.prevent
+                    @drop.prevent="onDatasetDrop"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span>{{ datasetUploading ? '正在解析并上传数据集...' : '点击或拖拽上传 JSONL 数据集' }}</span>
+                  </label>
+                  <input ref="datasetFileInput" type="file" class="hidden-input" accept=".jsonl,.json" @change="onDatasetFileChange" />
+
+                  <div v-if="datasetsLoading" class="dataset-empty">正在加载数据集...</div>
+                  <div v-else-if="!datasets.length" class="dataset-empty">暂无数据集，请先上传</div>
+                  <div v-else class="dataset-list">
+                    <div
+                      v-for="dataset in datasets"
+                      :key="dataset.dataset_id"
+                      class="dataset-card"
+                      :class="{ 'is-selected': selectedDatasetIds.includes(dataset.dataset_id) }"
+                    >
+                      <div class="dataset-card-main">
+                        <label class="dataset-check" @click.stop>
+                          <input v-model="selectedDatasetIds" type="checkbox" :value="dataset.dataset_id" :disabled="isTraining" />
+                        </label>
+                        <div class="dataset-card-info">
+                          <div class="dataset-card-title-row">
+                            <span class="dataset-card-name" :title="dataset.name">{{ dataset.name }}</span>
+                            <span class="dataset-card-meta">
+                              {{ dataset.sample_count }} 样本 · {{ dataset.entity_count }} 实体 · {{ dataset.label_count }} 类别
+                            </span>
+                          </div>
+                          <div class="dataset-card-time">{{ dataset.uploaded_at }}</div>
+                          <div class="dataset-label-chips" v-if="dataset.label_count">
+                            <span v-for="[label, count] in getDatasetLabelEntries(dataset).slice(0, 6)" :key="label" class="dataset-label-chip">
+                              {{ label }} <b>{{ count }}</b>
+                            </span>
+                            <span v-if="dataset.label_count > 6" class="dataset-label-chip dataset-label-more">+{{ dataset.label_count - 6 }}</span>
+                          </div>
+                        </div>
+                        <div class="dataset-card-actions">
+                          <button class="btn-sm" @click.stop="toggleDatasetStats(dataset.dataset_id)">
+                            {{ expandedDatasetId === dataset.dataset_id ? '收起' : '统计' }}
+                          </button>
+                          <button class="btn-sm btn-danger-text" :disabled="isTraining" @click.stop="deleteDataset(dataset.dataset_id)">删除</button>
+                        </div>
+                      </div>
+
+                      <div v-if="expandedDatasetId === dataset.dataset_id" class="dataset-stats-panel">
+                        <div class="dataset-stat-grid">
+                          <div class="dataset-stat-block">
+                            <span class="dataset-stat-value">{{ dataset.sample_count }}</span>
+                            <span class="dataset-stat-label">样本数</span>
+                          </div>
+                          <div class="dataset-stat-block">
+                            <span class="dataset-stat-value">{{ dataset.entity_count }}</span>
+                            <span class="dataset-stat-label">实体数</span>
+                          </div>
+                          <div class="dataset-stat-block">
+                            <span class="dataset-stat-value">{{ dataset.label_count }}</span>
+                            <span class="dataset-stat-label">类别数</span>
+                          </div>
+                          <div class="dataset-stat-block">
+                            <span class="dataset-stat-value">{{ formatNumber(dataset.char_count) }}</span>
+                            <span class="dataset-stat-label">总字数</span>
+                          </div>
+                        </div>
+                        <div class="dataset-label-bars">
+                          <div v-for="[label, count] in getDatasetLabelEntries(dataset)" :key="label" class="dataset-label-bar-row">
+                            <span class="dataset-label-bar-name" :title="label">{{ label }}</span>
+                            <div class="dataset-label-bar-track">
+                              <div class="dataset-label-bar-fill" :style="{ width: getDatasetLabelPct(dataset, count) + '%' }"></div>
+                            </div>
+                            <span class="dataset-label-bar-count">{{ count }}</span>
+                          </div>
+                        </div>
+                        <div class="dataset-stats-foot" v-if="dataset.unlabeled_sample_count">
+                          无标注样本：{{ dataset.unlabeled_sample_count }} 条
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="train-name-row">
+                  <label class="config-label">模型名称</label>
+                  <input v-model="trainModelName" class="select-field" placeholder="输入模型名称" :disabled="isTraining" />
                 </div>
 
                 <!-- 第二行：超参数网格 -->
@@ -892,8 +978,8 @@
                 <div class="train-actions">
                   <button
                     class="btn-train-start"
-                    :disabled="isTraining || !modelUploadFile || !trainModelName.trim()"
-                    @click="uploadAndTrainModel"
+                    :disabled="isTraining || !selectedDatasetIds.length || !trainModelName.trim()"
+                    @click="trainFromDatasets"
                   >
                     <svg v-if="isTraining" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" class="spin">
                       <circle cx="12" cy="12" r="10" stroke-opacity="0.2" />
@@ -1181,6 +1267,9 @@
           <svg v-else-if="toast.type === 'error'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
             <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
           </svg>
+          <svg v-else-if="toast.type === 'warning'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
             <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
           </svg>
@@ -1268,9 +1357,24 @@ const selectedModelId = ref(null)
 const selectedModelMeta = ref(null)
 const modelDetailLoading = ref(false)
 // 模型管理页面状态
-const modelFileInput = ref(null)
-const modelUploadFile = ref(null)
 const trainModelName = ref('')
+const datasets = ref([])
+const datasetsLoading = ref(false)
+const datasetUploading = ref(false)
+const selectedDatasetIds = ref([])
+const expandedDatasetId = ref('')
+const datasetFileInput = ref(null)
+
+const allDatasetSampleCount = computed(() =>
+  datasets.value.reduce((sum, item) => sum + (item.sample_count || 0), 0)
+)
+const allDatasetLabelCount = computed(() => {
+  const labels = new Set()
+  for (const dataset of datasets.value) {
+    for (const label of Object.keys(dataset.label_counts || {})) labels.add(label)
+  }
+  return labels.size
+})
 const trainEpochs = ref(2)
 const trainBatchSize = ref(8)
 const trainLearningRate = ref(3e-5)
@@ -1344,6 +1448,7 @@ const nowTick = ref(Date.now())
 const annotationRules = ref(FALLBACK_ANNOTATION_RULES)
 const selectedAnnotationRules = ref([])
 const annotationLoading = ref(false)
+const exportLoading = ref(false)
 const annotationError = ref('')
 const annotationResult = ref({ rules: [], entities: [], snippets: [], counts: { entities: 0, snippets: 0 } })
 const modelAnnotationResult = ref({ rules: [], entities: [], snippets: [], counts: { entities: 0, snippets: 0 } })
@@ -1999,21 +2104,170 @@ async function runModelInference() {
   }
 }
 
+async function exportAnnotations() {
+  const tid = taskInfo.task_id
+  if (!tid) {
+    showToast('当前没有可导出的任务', 'warning')
+    return
+  }
+  const includeRules = selectedAnnotationRules.value.length > 0
+  // 保留当前选择模型的语义，但要求用户至少实际执行过一次模型标注
+  const includeModel = !!selectedPersistentModelId.value && !!modelAnnotationLastRunAt.value
+
+  if (!includeRules && !includeModel) {
+    showToast('请先选择标注规则或模型', 'warning')
+    return
+  }
+
+  exportLoading.value = true
+  try {
+    const response = await axios.post(
+      `${API_BASE}/result/${tid}/export-annotations`,
+      {
+        rules: includeRules ? selectedAnnotationRules.value : [],
+        model_id: includeModel ? selectedPersistentModelId.value : '',
+        model_conf_threshold: modelConfThreshold.value / 100,
+      },
+      { responseType: 'blob' }
+    )
+
+    // 后端返回空文件时（无任何可导出的标注结果），不触发下载也不提示成功
+    if (response.data?.size === 0) {
+      showToast('当前没有可导出的标注结果', 'warning')
+      return
+    }
+
+    const disposition = response.headers['content-disposition'] || ''
+    const utf8Matched = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+    const plainMatched = disposition.match(/filename="?([^";]+)"?/)
+    const rawName = utf8Matched ? utf8Matched[1] : (plainMatched ? plainMatched[1] : '')
+    let filename = `${tid.slice(0, 8)}_annotations.jsonl`
+    if (rawName) {
+      try {
+        filename = decodeURIComponent(rawName)
+      } catch (_) {
+        filename = rawName
+      }
+    }
+
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/x-ndjson' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    // 延迟释放，避免部分浏览器在下载真正开始前就取消下载
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    showToast('标注结果已导出', 'success')
+  } catch (error) {
+    let message = '导出失败'
+    const payload = error.response?.data
+    if (payload instanceof Blob) {
+      try {
+        const parsed = JSON.parse(await payload.text())
+        message = parsed.message || message
+      } catch (_) { /* ignore */ }
+    } else if (payload?.message) {
+      message = payload.message
+    }
+    showToast(message, 'error')
+  } finally {
+    exportLoading.value = false
+  }
+}
+
 // ── 模型管理页面功能 ──
 
-/**
- * 处理 JSONL 文件选择
- */
-function onModelFileChange(event) {
-  const file = event.target.files?.[0]
-  if (file) {
-    modelUploadFile.value = file
-    // 自动使用文件名作为模型名称
-    if (!trainModelName.value.trim()) {
-      const name = file.name.replace(/\.(jsonl|json)$/i, '')
-      trainModelName.value = name
+async function fetchDatasets() {
+  datasetsLoading.value = true
+  try {
+    const response = await axios.get(`${API_BASE}/datasets`)
+    datasets.value = response.data || []
+    const availableIds = new Set(datasets.value.map(item => item.dataset_id))
+    selectedDatasetIds.value = selectedDatasetIds.value.filter(id => availableIds.has(id))
+    // 用户未填写模型名时，默认使用最新上传（列表首位）的数据集名
+    if (!trainModelName.value.trim() && datasets.value.length) {
+      trainModelName.value = datasets.value[0].name
     }
+  } catch {
+    // 拉取失败时同步清空选中项，避免界面为空但训练按钮仍可点击导致 404
+    datasets.value = []
+    selectedDatasetIds.value = []
+  } finally {
+    datasetsLoading.value = false
   }
+}
+
+async function uploadDatasetFile(file) {
+  if (!file || datasetUploading.value || isTraining.value) return
+  const lower = file.name.toLowerCase()
+  if (!lower.endsWith('.jsonl') && !lower.endsWith('.json')) {
+    showToast('请上传 .jsonl 或 .json 文件', 'warning')
+    return
+  }
+  datasetUploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await axios.post(`${API_BASE}/datasets/upload`, formData)
+    const dataset = response.data
+    datasets.value = [dataset, ...datasets.value.filter(item => item.dataset_id !== dataset.dataset_id)]
+    if (!selectedDatasetIds.value.includes(dataset.dataset_id)) {
+      selectedDatasetIds.value = [...selectedDatasetIds.value, dataset.dataset_id]
+    }
+    expandedDatasetId.value = dataset.dataset_id
+    if (!trainModelName.value.trim()) trainModelName.value = dataset.name
+    showToast(`数据集已上传：${dataset.sample_count} 样本 · ${dataset.label_count} 类别`, 'success')
+  } catch (error) {
+    showToast('数据集上传失败: ' + (error.response?.data?.message || error.message), 'error')
+  } finally {
+    datasetUploading.value = false
+  }
+}
+
+async function onDatasetFileChange(event) {
+  const file = event.target.files?.[0]
+  if (event.target) event.target.value = ''
+  if (file) await uploadDatasetFile(file)
+}
+
+function onDatasetDrop(event) {
+  const file = event.dataTransfer?.files?.[0]
+  if (file) uploadDatasetFile(file)
+}
+
+async function deleteDataset(datasetId) {
+  if (!datasetId || isTraining.value) return
+  if (!window.confirm('确定删除该数据集？删除后不可恢复。')) return
+  try {
+    await axios.delete(`${API_BASE}/datasets/${datasetId}`)
+    datasets.value = datasets.value.filter(item => item.dataset_id !== datasetId)
+    selectedDatasetIds.value = selectedDatasetIds.value.filter(id => id !== datasetId)
+    if (expandedDatasetId.value === datasetId) expandedDatasetId.value = ''
+    showToast('数据集已删除', 'success')
+  } catch {
+    showToast('删除失败', 'error')
+  }
+}
+
+function toggleDatasetStats(datasetId) {
+  expandedDatasetId.value = expandedDatasetId.value === datasetId ? '' : datasetId
+}
+
+function getDatasetLabelEntries(dataset) {
+  return Object.entries(dataset.label_counts || {}).sort((a, b) => b[1] - a[1])
+}
+
+function getDatasetLabelPct(dataset, count) {
+  const values = Object.values(dataset.label_counts || {})
+  const max = values.length ? Math.max(...values) : 1
+  return max ? Math.round((count / max) * 100) : 0
+}
+
+function formatNumber(value) {
+  const number = Number(value) || 0
+  return number >= 10000 ? `${(number / 10000).toFixed(1)}万` : String(number)
 }
 
 /**
@@ -2292,41 +2546,44 @@ function updateCharts(step, lossSmooth, lossRaw, lr, gradNorm, accuracy) {
   }
 }
 
-/**
- * 上传 JSONL 文件并开始训练（SSE 流）
- */
-async function uploadAndTrainModel() {
-  if (!modelUploadFile.value || !trainModelName.value.trim() || isTraining.value) return
+async function trainFromDatasets() {
+  if (isTraining.value) return
+  if (!selectedDatasetIds.value.length) {
+    showToast('请至少选择一个训练数据集', 'warning')
+    return
+  }
+  if (!trainModelName.value.trim()) {
+    showToast('请填写模型名称', 'warning')
+    return
+  }
 
   isTraining.value = true
   trainProgress.value = null
-  trainStatusMsg.value = '正在上传训练数据...'
+  trainStatusMsg.value = '正在准备训练数据...'
   trainStartTime.value = Date.now()
 
-  // 重置历史数据
   trainLossHistory.value = []
   trainLrHistory.value = []
   trainGradNormHistory.value = []
   trainLogMessages.value = []
 
-  // 销毁旧图表
   if (lossChart && typeof lossChart.destroy === 'function') { lossChart.destroy(); lossChart = null }
   if (gradNormChart && typeof gradNormChart.destroy === 'function') { gradNormChart.destroy(); gradNormChart = null }
   if (accuracyChart && typeof accuracyChart.destroy === 'function') { accuracyChart.destroy(); accuracyChart = null }
   await nextTick()
   initCharts()
 
-  const formData = new FormData()
-  formData.append('file', modelUploadFile.value)
-  formData.append('model_name', trainModelName.value.trim())
-  formData.append('epochs', String(trainEpochs.value))
-  formData.append('batch_size', String(trainBatchSize.value))
-  formData.append('lr', String(trainLearningRate.value))
-
   try {
-    const response = await fetch(`${API_BASE}/model/upload-and-train`, {
+    const response = await fetch(`${API_BASE}/model/train-from-dataset`, {
       method: 'POST',
-      body: formData,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataset_ids: selectedDatasetIds.value,
+        model_name: trainModelName.value.trim(),
+        epochs: trainEpochs.value,
+        batch_size: trainBatchSize.value,
+        lr: trainLearningRate.value,
+      }),
     })
 
     if (!response.ok) {
@@ -2334,13 +2591,10 @@ async function uploadAndTrainModel() {
       try {
         const errData = await response.json()
         errMsg = errData.message || errMsg
-      } catch (_) { /* ignore parse error */ }
+      } catch (_) { /* ignore */ }
       throw new Error(errMsg)
     }
-
-    if (!response.body) {
-      throw new Error('服务器返回空响应')
-    }
+    if (!response.body) throw new Error('服务器返回空响应')
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -2351,64 +2605,58 @@ async function uploadAndTrainModel() {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-
       const lines = buffer.split('\n')
       buffer = lines.pop()
 
       for (const line of lines) {
         if (trainingCompleted) continue
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6))
-            if (data.type === 'status') {
-              trainStatusMsg.value = data.message
-            } else if (data.type === 'progress') {
-              trainProgress.value = data
-              const currentEpoch = Math.floor(data.epoch) + 1
-              trainStatusMsg.value = `Epoch ${currentEpoch}/${trainEpochs.value} · Step ${data.step}/${data.max_steps}`
-              const step = data.step ?? trainLossHistory.value.length + 1
-              if (data.loss != null) {
-                const loss = data.loss_smooth ?? data.loss
-                const lossRaw = data.loss
-                const lr = data.learning_rate ?? 0
-                const gradNorm = data.grad_norm ?? 0
-                const accuracy = data.accuracy ?? null
-                updateCharts(step, loss, lossRaw, lr, gradNorm, accuracy)
-              }
-            } else if (data.type === 'complete') {
-              trainingCompleted = true
-              // 保存最终 Loss 用于弹窗显示
-              const finalLoss = trainProgress.value?.loss
-              trainProgress.value = data.result
-              trainProgress.value.finalLoss = finalLoss
-              trainStatusMsg.value = '训练完成！'
-              trainStartTime.value = null
-              await fetchSavedModels()
-              showTrainCompleteModal.value = true
-              trainCompleteResult.value = data.result
-            } else if (data.type === 'validation') {
-              trainProgress.value = { ...trainProgress.value, val_loss: data.val_loss, val_accuracy: data.val_accuracy }
-              trainLogMessages.value.push(`[验证] loss=${data.val_loss.toFixed(4)} acc=${(data.val_accuracy * 100).toFixed(1)}%`)
-              nextTick(() => { if (trainLogPanel.value) trainLogPanel.value.scrollTop = trainLogPanel.value.scrollHeight })
-            } else if (data.type === 'error') {
-              showToast('训练失败: ' + data.message, 'error')
-              console.error(data.detail)
-            } else if (data.type === 'log') {
-              trainLogMessages.value.push(data.message)
-              nextTick(() => {
-                if (trainLogPanel.value) {
-                  trainLogPanel.value.scrollTop = trainLogPanel.value.scrollHeight
-                }
-              })
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.type === 'status') {
+            trainStatusMsg.value = data.message
+          } else if (data.type === 'progress') {
+            trainProgress.value = data
+            const currentEpoch = Math.floor(data.epoch) + 1
+            trainStatusMsg.value = `Epoch ${currentEpoch}/${trainEpochs.value} · Step ${data.step}/${data.max_steps}`
+            const step = data.step ?? trainLossHistory.value.length + 1
+            if (data.loss != null) {
+              updateCharts(
+                step,
+                data.loss_smooth ?? data.loss,
+                data.loss,
+                data.learning_rate ?? 0,
+                data.grad_norm ?? 0,
+                data.accuracy ?? null
+              )
             }
-          } catch (parseErr) {
-            // ignore non-JSON data lines
+          } else if (data.type === 'complete') {
+            trainingCompleted = true
+            const finalLoss = trainProgress.value?.loss
+            trainProgress.value = data.result
+            trainProgress.value.finalLoss = finalLoss
+            trainStatusMsg.value = '训练完成！'
+            trainStartTime.value = null
+            await fetchSavedModels()
+            showTrainCompleteModal.value = true
+            trainCompleteResult.value = data.result
+          } else if (data.type === 'validation') {
+            trainProgress.value = { ...trainProgress.value, val_loss: data.val_loss, val_accuracy: data.val_accuracy }
+            trainLogMessages.value.push(`[验证] loss=${data.val_loss.toFixed(4)} acc=${(data.val_accuracy * 100).toFixed(1)}%`)
+          } else if (data.type === 'error') {
+            showToast('训练失败: ' + data.message, 'error')
+            console.error(data.detail)
+          } else if (data.type === 'log') {
+            trainLogMessages.value.push(data.message)
+            nextTick(() => {
+              if (trainLogPanel.value) trainLogPanel.value.scrollTop = trainLogPanel.value.scrollHeight
+            })
           }
-        }
+        } catch (_) { /* ignore */ }
       }
     }
-  } catch (e) {
-    showToast('训练失败: ' + (e.message || '连接中断'), 'error')
+  } catch (error) {
+    showToast('训练失败: ' + (error.message || '连接中断'), 'error')
   } finally {
     isTraining.value = false
     trainStartTime.value = null
@@ -2429,7 +2677,6 @@ const trainProgressPercent = computed(() => {
 function closeTrainCompleteModal() {
   showTrainCompleteModal.value = false
   trainCompleteResult.value = null
-  modelUploadFile.value = null
   trainModelName.value = ''
   trainProgress.value = null
 }
@@ -2613,7 +2860,10 @@ async function runEvaluation() {
 
 // Watch page switch to load models
 watch(currentPage, (page) => {
-  if (page === 'models') fetchSavedModels()
+  if (page === 'models') {
+    fetchSavedModels()
+    fetchDatasets()
+  }
 })
 
 function focusAnnotation(entry) {
@@ -3108,6 +3358,7 @@ onMounted(() => {
   loadOptions()
   loadAnnotationOptions()
   fetchHistory()
+  fetchDatasets()
   if (window.matchMedia('(prefers-color-scheme: dark)').matches) isDarkMode.value = true
   window.addEventListener('keydown', onKeydown)
 })
@@ -6154,6 +6405,16 @@ body {
   color: var(--color-danger);
 }
 
+.toast.warning {
+  border-color: var(--color-warning);
+  background: var(--color-warning-light);
+  color: #92400e;
+}
+
+.app-shell.theme-dark .toast.warning {
+  color: var(--color-warning);
+}
+
 .toast-icon {
   width: 20px;
   height: 20px;
@@ -6169,6 +6430,10 @@ body {
 
 .toast.error .toast-icon {
   color: var(--color-danger);
+}
+
+.toast.warning .toast-icon {
+  color: var(--color-warning);
 }
 
 .toast.info .toast-icon {
@@ -6842,6 +7107,9 @@ body {
 .model-actions-cell { display: flex; gap: 8px; }
 
 /* 按钮 */
+.btn-sm { padding: 4px 12px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 12px; cursor: pointer; transition: all var(--transition-fast); }
+.btn-sm:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); }
+.btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-sm.btn-download { padding: 4px 12px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 12px; cursor: pointer; transition: all var(--transition-fast); }
 .btn-sm.btn-download:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); }
 .btn-sm.btn-danger-text { padding: 4px 12px; border: none; border-radius: 6px; background: none; color: var(--color-text-muted); font-size: 12px; cursor: pointer; transition: color var(--transition-fast); }
@@ -6875,6 +7143,47 @@ body {
 .train-name-input { width: 200px; flex-shrink: 0; }
 .train-name-input .config-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 500; color: var(--color-text-secondary); }
 .train-name-input .select-field { width: 100%; }
+
+/* 训练数据集 */
+.dataset-section { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.dataset-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.dataset-section-title { font-size: 13px; font-weight: 600; color: var(--color-text); }
+.dataset-section-desc { margin: 2px 0 0; font-size: 12px; color: var(--color-text-muted); }
+.dataset-summary-pill { padding: 3px 10px; border-radius: 999px; font-size: 11px; background: rgba(16,185,129,0.12); color: #10b981; border: 1px solid rgba(16,185,129,0.25); white-space: nowrap; }
+.dataset-upload-zone { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; border: 1px dashed var(--color-border); border-radius: 10px; font-size: 12px; color: var(--color-text-muted); cursor: pointer; transition: border-color .15s, background .15s; }
+.dataset-upload-zone:hover { border-color: var(--color-success); background: rgba(16,185,129,0.05); }
+.dataset-upload-zone.is-uploading { pointer-events: none; opacity: .7; }
+.dataset-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--color-text-muted); }
+.dataset-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.dataset-card { border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-subtle); }
+.dataset-card.is-selected { border-color: rgba(16,185,129,0.55); box-shadow: 0 0 0 1px rgba(16,185,129,0.25) inset; }
+.dataset-card-main { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; }
+.dataset-check { padding-top: 2px; }
+.dataset-card-info { flex: 1; min-width: 0; }
+.dataset-card-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dataset-card-name { font-size: 13px; font-weight: 600; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.dataset-card-meta { font-size: 11px; color: var(--color-text-muted); }
+.dataset-card-time { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+.dataset-label-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.dataset-label-chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(148,163,184,0.12); color: var(--color-text-secondary); }
+.dataset-label-chip b { color: var(--color-text); margin-left: 2px; }
+.dataset-label-more { opacity: .7; }
+.dataset-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.dataset-stats-panel { border-top: 1px solid var(--color-border); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.dataset-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.dataset-stat-block { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border-radius: 8px; background: rgba(148,163,184,0.08); }
+.dataset-stat-value { font-size: 16px; font-weight: 700; color: var(--color-text); }
+.dataset-stat-label { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+.dataset-label-bars { display: flex; flex-direction: column; gap: 6px; }
+.dataset-label-bar-row { display: grid; grid-template-columns: 96px 1fr 36px; align-items: center; gap: 8px; }
+.dataset-label-bar-name { font-size: 11px; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-label-bar-track { height: 8px; border-radius: 999px; background: rgba(148,163,184,0.15); overflow: hidden; }
+.dataset-label-bar-fill { height: 100%; min-width: 4px; border-radius: 999px; background: linear-gradient(90deg, #10b981, #34d399); transition: width .3s ease; }
+.dataset-label-bar-count { font-size: 11px; color: var(--color-text); text-align: right; }
+.dataset-stats-foot { font-size: 11px; color: var(--color-text-muted); }
+.train-name-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.train-name-row .config-label { font-size: 12px; font-weight: 500; color: var(--color-text-secondary); }
+.train-name-row .select-field { width: 100%; }
 
 /* 超参数网格 */
 .train-params-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }

@@ -957,7 +957,8 @@ def run_inference(model_id: str, document_text: str) -> dict[str, Any]:
     all_entities: list[dict[str, Any]] = []
     entity_idx = 0
 
-    for sentence in sentences:
+    for sentence_idx, sentence in enumerate(sentences):
+        original_sentence = sentence
         sentence = _normalize_text(sentence)
 
         tokenized = tokenizer(
@@ -1038,6 +1039,10 @@ def run_inference(model_id: str, document_text: str) -> dict[str, Any]:
                 "text": cleaned,
                 "context": _clean_text(context),
                 "confidence": ent.get("confidence", 0),
+                "start_offset": start_off,
+                "end_offset": end_off,
+                "sentence_index": sentence_idx,
+                "sentence_original": original_sentence,
             })
             entity_idx += 1
 
@@ -1145,6 +1150,61 @@ def continue_train(model_id: str, new_examples: list[dict[str, str]]) -> dict[st
 
 # ── JSONL 解析工具 ───────────────────────────────────────
 
+def _coerce_entity_span(
+    text: str,
+    raw: Any,
+    *,
+    start_keys: tuple[str, ...],
+    end_keys: tuple[str, ...],
+) -> dict[str, Any] | None:
+    """把一条原始实体/span 转为标准 Doccano 实体；字段非法时返回 None。
+
+    校验 start/end 可转 int、0 <= start < end <= len(text)，并丢弃
+    缺少 label 或 label 为空的项，避免 KeyError/ValueError 中断整行解析。
+    """
+    if not isinstance(raw, dict) or "label" not in raw:
+        return None
+    start_value = next((raw[key] for key in start_keys if key in raw), None)
+    end_value = next((raw[key] for key in end_keys if key in raw), None)
+    if start_value is None or end_value is None:
+        return None
+    label = str(raw.get("label") or "").strip()
+    if not label:
+        return None
+    try:
+        start = int(start_value)
+        end = int(end_value)
+    except (TypeError, ValueError):
+        return None
+    if start < 0 or end <= start or end > len(text):
+        return None
+    return {"start_offset": start, "end_offset": end, "label": label}
+
+
+def _coerce_label_entry(text: str, raw: Any) -> dict[str, Any] | None:
+    """兼容 [start, end, label] 元组/列表以及同结构 dict。"""
+    if isinstance(raw, dict):
+        return _coerce_entity_span(
+            text,
+            raw,
+            start_keys=("start", "start_offset"),
+            end_keys=("end", "end_offset"),
+        )
+    if not isinstance(raw, (list, tuple)) or len(raw) < 3:
+        return None
+    try:
+        start = int(raw[0])
+        end = int(raw[1])
+    except (TypeError, ValueError):
+        return None
+    label = str(raw[2] or "").strip()
+    if not label:
+        return None
+    if start < 0 or end <= start or end > len(text):
+        return None
+    return {"start_offset": start, "end_offset": end, "label": label}
+
+
 def parse_jsonl_training_data(content: str) -> list[dict[str, Any]]:
     """解析 JSONL 格式的训练数据文件。
 
@@ -1152,39 +1212,54 @@ def parse_jsonl_training_data(content: str) -> list[dict[str, Any]]:
     1. Doccano spans 格式: {text, spans: [{start, end, label}]}
     2. Doccano entities 格式: {text, entities: [{start_offset, end_offset, label}]}
     3. 旧版 labels 格式: {text, labels: [[start, end, label], ...]}
+
+    单条实体字段非法时只跳过该实体，不中断整行；无法解析的行直接忽略。
     """
-    examples = []
+    # 兼容带 BOM 的首行（Windows 记事本/Excel 导出常见）。
+    content = content.lstrip("\ufeff")
+    examples: list[dict[str, Any]] = []
     for line in content.splitlines():
         line = line.strip()
         if not line:
             continue
         try:
             item = json.loads(line)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(item, dict):
             continue
 
-        text = item.get("text", "")
-        if not text:
+        text = item.get("text")
+        if not isinstance(text, str) or not text:
             continue
 
-        # 尝试三种格式
-        entities = None
-        if "spans" in item and isinstance(item["spans"], list):
-            entities = [
-                {"start_offset": s["start"], "end_offset": s["end"], "label": str(s["label"])}
-                for s in item["spans"] if isinstance(s, dict) and "start" in s and "end" in s
-            ]
-        elif "entities" in item and isinstance(item["entities"], list):
-            entities = item["entities"]
-        elif "labels" in item and isinstance(item["labels"], list):
-            if item["labels"] and isinstance(item["labels"][0], list):
-                entities = [
-                    {"start_offset": int(l[0]), "end_offset": int(l[1]), "label": str(l[2])}
-                    for l in item["labels"]
-                ]
-
-        if entities is None:
-            entities = []
+        # 三种格式按 spans → entities → labels 的优先级尝试。
+        entities: list[dict[str, Any]] = []
+        raw_spans = item.get("spans")
+        raw_entities = item.get("entities")
+        raw_labels = item.get("labels")
+        if isinstance(raw_spans, list):
+            for raw in raw_spans:
+                entity = _coerce_entity_span(
+                    text, raw, start_keys=("start",), end_keys=("end",)
+                )
+                if entity is not None:
+                    entities.append(entity)
+        elif isinstance(raw_entities, list):
+            for raw in raw_entities:
+                entity = _coerce_entity_span(
+                    text,
+                    raw,
+                    start_keys=("start_offset", "start"),
+                    end_keys=("end_offset", "end"),
+                )
+                if entity is not None:
+                    entities.append(entity)
+        elif isinstance(raw_labels, list):
+            for raw in raw_labels:
+                entity = _coerce_label_entry(text, raw)
+                if entity is not None:
+                    entities.append(entity)
 
         examples.append({"text": text, "entities": entities})
 
